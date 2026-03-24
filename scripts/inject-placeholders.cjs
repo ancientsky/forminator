@@ -267,6 +267,50 @@ function processDOC4() {
       xml.substring(insertAt);
   }
 
+  // 七、預定進度 — 甘特圖表格 loop 注入
+  // 表格：月次/工作項目 | 第1月 | ... | 第12月 | 備註（共 14 cell）
+  // 標頭行後有 19 個空白資料行，保留第 1 行改為 loop，刪除其餘 18 行
+  const ganttAnchor = '月\u3000次';
+  const ganttIdx = xml.indexOf(ganttAnchor);
+  if (ganttIdx !== -1) {
+    // Find the table containing the gantt chart
+    const ganttTblStart = xml.lastIndexOf('<w:tbl', ganttIdx);
+    const ganttTblEnd = xml.indexOf('</w:tbl>', ganttIdx) + 8;
+
+    if (ganttTblStart !== -1 && ganttTblEnd > 8) {
+      let ganttTable = xml.substring(ganttTblStart, ganttTblEnd);
+      const ganttRowParts = ganttTable.split('</w:tr>');
+      // ganttRowParts[0] = header row, [1]~[19] = data rows, [20] = after last </w:tr>
+
+      if (ganttRowParts.length > 2) {
+        // Modify first data row (index 1) to have loop placeholders
+        let dataRow = ganttRowParts[1] + '</w:tr>';
+        // 14 cells: [0]=task_name, [1]~[12]=months, [13]=備註
+        const ganttPlaceholders = [
+          '{#gantt_rows}{task_name}',
+          '{m1}', '{m2}', '{m3}', '{m4}', '{m5}', '{m6}',
+          '{m7}', '{m8}', '{m9}', '{m10}', '{m11}', '{m12}',
+          '{/gantt_rows}',
+        ];
+        let gcIdx = 0;
+        dataRow = dataRow.replace(/(<w:tc><w:tcPr>[\s\S]*?<\/w:tcPr><w:p[^>]*>(?:<w:pPr>[\s\S]*?<\/w:pPr>)?)(<\/w:p>)/g,
+          (match, before, after) => {
+            if (gcIdx < ganttPlaceholders.length) {
+              const ph = ganttPlaceholders[gcIdx];
+              gcIdx++;
+              return `${before}<w:r><w:t>${ph}</w:t></w:r>${after}`;
+            }
+            return match;
+          }
+        );
+
+        // Rebuild table: header + loop row + closing (skip rows 2~19)
+        const newTable = ganttRowParts[0] + '</w:tr>' + dataRow + ganttRowParts[ganttRowParts.length - 1];
+        xml = xml.substring(0, ganttTblStart) + newTable + xml.substring(ganttTblEnd);
+      }
+    }
+  }
+
   // 伍、人力配置 — 用 docxtemplater loop 語法注入
   // 表格結構：類別 | 姓名 | 現職 | 在本計畫內擔任之具體工作性質、項目及範圍
   // 在表頭行後的空資料行中：第一個 cell 放 {#personnel_rows}{role_text}，

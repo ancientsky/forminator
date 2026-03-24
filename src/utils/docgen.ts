@@ -178,6 +178,15 @@ function prepareCommonData(data: FormData) {
       ).join('\n')
       : '（請參閱署內研究計畫書）',
 
+    // 甘特圖表格 loop (DOC-4)
+    gantt_rows: data.gantt_chart.map(g => {
+      const row: Record<string, string> = { task_name: g.task_name };
+      for (let i = 0; i < 12; i++) {
+        row[`m${i + 1}`] = g.months[i] ? '■' : '';
+      }
+      return row;
+    }),
+
     // 人力配置 (for DOC-4 loop)
     personnel_rows: data.personnel.map(p => ({
       role_text: ROLE_MAP[p.role] || p.role,
