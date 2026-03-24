@@ -49,13 +49,23 @@ app.post('/api/llm/translate-title', async (req, res) => {
       }),
     });
 
+    if (!response.ok) {
+      const errBody = await response.text();
+      console.error('GROQ API error:', response.status, errBody);
+      return res.status(502).json({ error: `GROQ API 錯誤: ${response.status}` });
+    }
     const data = await response.json();
     const content = data.choices?.[0]?.message?.content;
-    const parsed = JSON.parse(content);
+    if (!content) {
+      console.error('Empty LLM response:', JSON.stringify(data));
+      return res.status(502).json({ error: 'LLM 回應為空' });
+    }
+    const cleaned = content.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+    const parsed = JSON.parse(cleaned);
     res.json(parsed);
   } catch (err) {
     console.error('translate-title error:', err);
-    res.status(500).json({ error: '翻譯失敗' });
+    res.status(500).json({ error: `翻譯失敗: ${err.message}` });
   }
 });
 
@@ -109,9 +119,19 @@ app.post('/api/llm/generate-abstract', async (req, res) => {
       }),
     });
 
+    if (!response.ok) {
+      const errBody = await response.text();
+      console.error('GROQ API error:', response.status, errBody);
+      return res.status(502).json({ error: `GROQ API 錯誤: ${response.status}` });
+    }
     const data = await response.json();
     const content = data.choices?.[0]?.message?.content;
-    const parsed = JSON.parse(content);
+    if (!content) {
+      console.error('Empty LLM response:', JSON.stringify(data));
+      return res.status(502).json({ error: 'LLM 回應為空' });
+    }
+    const cleaned = content.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+    const parsed = JSON.parse(cleaned);
     res.json(parsed);
   } catch (err) {
     console.error('generate-abstract error:', err);

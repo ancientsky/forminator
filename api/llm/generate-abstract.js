@@ -55,12 +55,25 @@ export default async function handler(req, res) {
       }),
     });
 
+    if (!response.ok) {
+      const errBody = await response.text();
+      console.error('GROQ API error:', response.status, errBody);
+      return res.status(502).json({ error: `GROQ API 錯誤: ${response.status}` });
+    }
+
     const data = await response.json();
     const content = data.choices?.[0]?.message?.content;
-    const parsed = JSON.parse(content);
+    if (!content) {
+      console.error('Empty LLM response:', JSON.stringify(data));
+      return res.status(502).json({ error: 'LLM 回應為空' });
+    }
+
+    // qwen3 可能回傳 <think>...</think> 包裹的思考內容，需要清除
+    const cleaned = content.replace(/<think>[\s\S]*?<\/think>/g, '').trim();
+    const parsed = JSON.parse(cleaned);
     res.json(parsed);
   } catch (err) {
     console.error('generate-abstract error:', err);
-    res.status(500).json({ error: '生成失敗' });
+    res.status(500).json({ error: `生成失敗: ${err.message}` });
   }
 }

@@ -23,7 +23,7 @@ export default function Step1BasicInfo() {
       setValue('project_title_en', res.project_title_en);
     } catch (err) {
       console.error('翻譯失敗:', err);
-      message.error('英文翻譯失敗，請確認網路連線或稍後再試');
+      message.error(`英文翻譯失敗：${err instanceof Error ? err.message : '未知錯誤'}`);
     } finally {
       setTranslating(false);
     }

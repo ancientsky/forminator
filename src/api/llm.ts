@@ -22,7 +22,10 @@ export async function translateTitle(titleZh: string): Promise<TranslateTitleRes
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ project_title_zh: titleZh }),
   });
-  if (!res.ok) throw new Error('翻譯失敗');
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(err.error || `HTTP ${res.status}`);
+  }
   return res.json();
 }
 

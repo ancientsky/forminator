@@ -306,6 +306,102 @@ function processDOC4() {
     }
   }
 
+  // ===== 目錄頁碼：bookmark + PAGEREF =====
+  // 目錄中的 (  ) 替換為 PAGEREF 欄位碼，本文章節標題加 bookmark
+  const tocSections = [
+    // [目錄文字, bookmark 名稱, 本文 anchor（用來找到第二次出現的標題）]
+    ['壹、綜合資料', 'sec_1', '壹、綜合資料'],
+    ['貳、計畫中文摘要', 'sec_2', '貳、計畫中文摘要'],
+    ['參、計畫英文摘要', 'sec_3', '參、計畫英文摘要'],
+    ['肆、計畫內容', 'sec_4', '肆、計畫內容'],
+    ['一、研究主旨', 'sec_4_1', '一、研究主旨'],
+    ['二、背景分析', 'sec_4_2', '二、背景分析'],
+    ['三、多年期計畫之執行成果概要', 'sec_4_3', '三、多年期計畫之執行成果概要'],
+    ['四、實施方法及進行步驟', 'sec_4_4', '四、實施方法及進行步驟'],
+    ['五、成果預估', 'sec_4_5', '五、成果預估'],
+    ['六、重要參考文獻', 'sec_4_6', '六、重要參考文獻'],
+    ['七、預定進度', 'sec_4_7', null], // 七、在 XML 中被拆開，特殊處理
+    ['伍、人力配置', 'sec_5', '伍、人力配置'],
+    ['陸、經費需求', 'sec_6', '陸、經費需求'],
+    ['柒、需其他機關配合或協調事項', 'sec_7', '柒、需其他機關配合或協調事項'],
+    ['捌、附表', 'sec_8', '捌、附表'],
+  ];
+
+  let bmId = 100; // bookmark ID 起始值
+
+  // Step 1: 在本文章節標題處插入 bookmark
+  for (const [, bmName, bodyAnchor] of tocSections) {
+    if (!bodyAnchor) continue;
+    // 找本文中的標題（跳過目錄中的第一次出現）
+    const firstIdx = xml.indexOf(bodyAnchor);
+    if (firstIdx === -1) continue;
+    const secondIdx = xml.indexOf(bodyAnchor, firstIdx + bodyAnchor.length);
+    const targetIdx = secondIdx !== -1 ? secondIdx : firstIdx;
+
+    // 找到包含此標題的 <w:p> 開頭
+    const pStart = xml.lastIndexOf('<w:p ', targetIdx - 500 < 0 ? 0 : targetIdx - 500);
+    if (pStart === -1 || pStart > targetIdx) continue;
+    // 確認這個 <w:p> 確實包含目標文字
+    const pEnd = xml.indexOf('</w:p>', targetIdx);
+    if (pEnd === -1) continue;
+
+    // 在 <w:p ...> 的結尾 > 後面插入 bookmarkStart 和 bookmarkEnd
+    const pTagEnd = xml.indexOf('>', pStart) + 1;
+    const bmXml = `<w:bookmarkStart w:id="${bmId}" w:name="${bmName}"/><w:bookmarkEnd w:id="${bmId}"/>`;
+    xml = xml.substring(0, pTagEnd) + bmXml + xml.substring(pTagEnd);
+    bmId++;
+  }
+
+  // 特殊處理「七、預定進度」— XML 中被拆成 "七、" + "年度預定進度"
+  {
+    // 找本文中的 "年度預定進度"（第二次出現，跳過目錄）
+    const anchor = '年度預定進度';
+    const firstIdx = xml.indexOf(anchor);
+    const secondIdx = xml.indexOf(anchor, firstIdx + anchor.length);
+    const targetIdx = secondIdx !== -1 ? secondIdx : firstIdx;
+    if (targetIdx !== -1) {
+      const pStart = xml.lastIndexOf('<w:p ', targetIdx - 500 < 0 ? 0 : targetIdx - 500);
+      if (pStart !== -1 && pStart < targetIdx) {
+        const pTagEnd = xml.indexOf('>', pStart) + 1;
+        const bmXml = `<w:bookmarkStart w:id="${bmId}" w:name="sec_4_7"/><w:bookmarkEnd w:id="${bmId}"/>`;
+        xml = xml.substring(0, pTagEnd) + bmXml + xml.substring(pTagEnd);
+        bmId++;
+      }
+    }
+  }
+
+  // Step 2: 替換目錄中的 (  ) 為 PAGEREF 欄位碼
+  // 目錄中 (  ) 的順序對應 tocSections 的順序
+  let tocIdx = 0;
+  // 限定只替換目錄區域的 (  )（在「壹、綜合資料」第一次出現之前的區域之後）
+  const tocAreaStart = xml.indexOf('壹、綜合資料');
+  const tocAreaEnd = xml.indexOf('衛生福利部疾病管制署', tocAreaStart + 10);
+
+  if (tocAreaStart !== -1 && tocAreaEnd !== -1) {
+    const beforeToc = xml.substring(0, tocAreaStart);
+    let tocArea = xml.substring(tocAreaStart, tocAreaEnd);
+    const afterToc = xml.substring(tocAreaEnd);
+
+    tocArea = tocArea.replace(/>\(\s{2}\)</g, () => {
+      if (tocIdx < tocSections.length) {
+        const bmName = tocSections[tocIdx][1];
+        tocIdx++;
+        // PAGEREF field code using complex field characters
+        return '>' +
+          '</w:t></w:r>' +
+          '<w:r><w:fldChar w:fldCharType="begin"/></w:r>' +
+          `<w:r><w:instrText xml:space="preserve"> PAGEREF ${bmName} \\h </w:instrText></w:r>` +
+          '<w:r><w:fldChar w:fldCharType="separate"/></w:r>' +
+          '<w:r><w:t>?</w:t></w:r>' +
+          '<w:r><w:fldChar w:fldCharType="end"/></w:r>' +
+          '<w:r><w:t';
+      }
+      return '>(  )';
+    });
+
+    xml = beforeToc + tocArea + afterToc;
+  }
+
   saveDoc(zip, xml, 'DOC-4.docx');
 }
 
