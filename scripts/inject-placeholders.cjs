@@ -1,0 +1,391 @@
+// ===== 在原始 .docx 範本中注入 docxtemplater placeholder =====
+// 直接操作 word/document.xml，保留原始格式
+
+const fs = require('fs');
+const path = require('path');
+const PizZip = require('pizzip');
+
+const SRC = '/tmp/forminator-templates';
+const OUT = path.join(__dirname, '..', 'public', 'templates');
+fs.mkdirSync(OUT, { recursive: true });
+
+// ===== 工具函式 =====
+
+function readDocXml(zipPath) {
+  const buf = fs.readFileSync(zipPath);
+  const zip = new PizZip(buf);
+  const xml = zip.file('word/document.xml').asText();
+  return { zip, xml };
+}
+
+function saveDoc(zip, xml, outName) {
+  zip.file('word/document.xml', xml);
+  const buf = zip.generate({ type: 'nodebuffer', compression: 'DEFLATE' });
+  const fp = path.join(OUT, outName);
+  fs.writeFileSync(fp, buf);
+  console.log(`✅ ${outName} (${(buf.length / 1024).toFixed(1)} KB)`);
+}
+
+// 替換 <w:t> 中的文字（處理 xml:space="preserve" 的情況）
+function replaceText(xml, oldText, newText) {
+  // 先嘗試直接替換 <w:t> 內容
+  const escaped = oldText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const regex = new RegExp(`(>)${escaped}(<)`, 'g');
+  const result = xml.replace(regex, `$1${newText}$2`);
+  if (result !== xml) return result;
+
+  // 也嘗試帶 preserve 的
+  const regex2 = new RegExp(escaped, 'g');
+  return xml.replace(regex2, newText);
+}
+
+// 在指定標籤文字後面的下一個空白 <w:t> 中插入 placeholder
+// 適用於 "label：" 後面跟著空格或空值的情況
+function replaceAfterLabel(xml, label, placeholder) {
+  return replaceText(xml, label, label + placeholder);
+}
+
+// ========================================
+// DOC-4: 署內研究計畫書
+// ========================================
+function processDOC4() {
+  console.log('\n📄 Processing DOC-4: 署內研究計畫書');
+  let { zip, xml } = readDocXml(path.join(SRC, 'DOC-4.docx'));
+
+  // 封面頁
+  xml = replaceText(xml, '○○○年\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000\u3000',
+    '{project_year}年');
+
+  // 封面計畫名稱（帶底線的全形空格）
+  xml = xml.replace(
+    /(<w:t[^>]*>計畫名稱：<\/w:t>[\s\S]*?<w:t[^>]*>)([\u3000\s]+)(<\/w:t>)/,
+    '$1{project_title_zh}$3'
+  );
+
+  // 封面負責單位
+  xml = xml.replace(
+    /(<w:t[^>]*>負責單位：<\/w:t>[\s\S]*?<w:t[^>]*>)([\u3000\s]+)(<\/w:t>)/,
+    '$1{responsible_unit}$3'
+  );
+
+  // 封面主持人
+  xml = xml.replace(
+    /(<w:t[^>]*>主持人：<\/w:t>[\s\S]*?<w:t[^>]*>)([\u3000\s]+)(<\/w:t>)/,
+    '$1{pi_name_zh}$3'
+  );
+
+  // 封面簽名
+  xml = xml.replace(
+    /(<w:t[^>]*>\u3000簽名：<\/w:t>[\s\S]*?<w:t[^>]*>)([\u3000\s]+)(<\/w:t>)/,
+    '$1{pi_name_zh}$3'
+  );
+
+  // 封面協同主持人（3個位置）
+  let copiCount = 0;
+  xml = xml.replace(
+    /(<w:t[^>]*>協同主持人：<\/w:t>[\s\S]*?<w:t[^>]*>)([\u3000\s]+)(<\/w:t>)/g,
+    (match, p1, p2, p3) => {
+      copiCount++;
+      if (copiCount <= 3) return `${p1}{co_pi_name_${copiCount}}${p3}`;
+      return match;
+    }
+  );
+
+  // 封面研究人員（4個位置）
+  let resCount = 0;
+  xml = xml.replace(
+    /(<w:t[^>]*>研究人員：<\/w:t>[\s\S]*?<w:t[^>]*>)([\u3000\s]+)(<\/w:t>)/g,
+    (match, p1, p2, p3) => {
+      resCount++;
+      if (resCount <= 4) return `${p1}{researcher_name_${resCount}}${p3}`;
+      return match;
+    }
+  );
+
+  // 封面填報日期
+  xml = replaceText(xml,
+    '填報日期：\u3000\u3000\u3000\u3000\u3000年\u3000\u3000\u3000月\u3000\u3000\u3000日',
+    '填報日期：{filing_date_roc}');
+
+  // 壹、綜合資料表格內
+  // 計畫名稱 中文/英文
+  xml = replaceText(xml, '>中文：<', '>{zh_title_prefix}{project_title_zh}<');
+  // 先做標記避免重複替換
+  xml = xml.replace('{zh_title_prefix}', '中文：');
+
+  xml = replaceText(xml, '>英文：<', '>{en_title_prefix}{project_title_en}<');
+  xml = xml.replace('{en_title_prefix}', '英文：');
+
+  // 計畫類別 checkbox（預設新增型一年期）
+  xml = replaceText(xml, '□新增計畫：', '{project_type_new}新增計畫：');
+  xml = replaceText(xml, '□一年期計畫', '{project_type_1yr}一年期計畫');
+  xml = replaceText(xml, '□多年期計畫，共', '{project_type_multi}多年期計畫，共');
+  xml = replaceText(xml, '□舊多年期計畫', '{project_type_old}舊多年期計畫');
+
+  // 實驗類別
+  xml = replaceText(xml, '□人體研究', '{exp_human}人體研究');
+  xml = replaceText(xml, '□人體基因重組', '{exp_gene}人體基因重組');
+
+  // 執行期限
+  xml = xml.replace(
+    /本年度自民國[\s\S]*?止/,
+    '本年度自民國{execution_start_roc}起至{execution_end_roc}止'
+  );
+
+  // 經費需求
+  xml = replaceText(xml, '□需經費', '{needs_funding_yes}需經費');
+  xml = replaceText(xml, '□不需經費', '{needs_funding_no}不需經費');
+
+  // 計畫主持人聯絡資訊表格
+  // These are in the 壹 table, replace field values
+  // We'll handle them via the template data mapping
+
+  // 貳、中文摘要
+  // 計畫名稱 and 關鍵詞 fields in the abstract section
+  // These will be filled by docxtemplater loops
+
+  saveDoc(zip, xml, 'DOC-4.docx');
+}
+
+// ========================================
+// DOC-5: 資料庫保密切結書（署內員工）
+// ========================================
+function processDOC5() {
+  console.log('\n📄 Processing DOC-5: 資料庫保密切結書');
+  let { zip, xml } = readDocXml(path.join(SRC, 'DOC-5.docx'));
+
+  // 立書人名字（原始文件有 "邱乾順" 作為範例）
+  xml = replaceText(xml, '邱乾順', '{person_name_zh}');
+
+  // 立書人姓名欄位（簽名處）
+  xml = replaceText(xml, '>立書人姓名：<', '>立書人姓名：{person_name_zh}<');
+
+  // 職稱
+  xml = replaceText(xml, '>職稱：<', '>職稱：{person_title}<');
+
+  // 身分證字號（可能被拆成多個 run）
+  xml = replaceText(xml, '>證字號：<', '>證字號：{person_id_number}<');
+
+  // 日期
+  xml = replaceText(xml, '中華民國     年     月    日', '中華民國{signing_date_roc}');
+
+  saveDoc(zip, xml, 'DOC-5.docx');
+}
+
+// ========================================
+// DOC-6: 資料庫使用申請單
+// ========================================
+function processDOC6() {
+  console.log('\n📄 Processing DOC-6: 資料庫使用申請單');
+  let { zip, xml } = readDocXml(path.join(SRC, 'DOC-6.docx'));
+
+  // 申請日期
+  xml = xml.replace(
+    /民國[\u3000\s]+年[\u3000\s]+月[\u3000\s]+日/,
+    '民國{apply_date_roc}'
+  );
+
+  // 一、申請者資料 - 表格內的欄位值
+  // 這些欄位在表格的第二列，跟在標籤後面
+  // 申請單位、申請人員、公務電話、E-mail 的值在相鄰 cell 中
+
+  // 研究目的及用途 checkbox
+  xml = replaceText(xml, '□署內科技研究計畫', '{purpose_internal}署內科技研究計畫');
+  xml = replaceText(xml, '□碩、博士論文', '{purpose_thesis}碩、博士論文');
+  // ⬛️ is a filled checkbox in the original
+  xml = replaceText(xml, '⬛️無需經費研究計畫', '{purpose_no_fund}無需經費研究計畫');
+  xml = replaceText(xml, '□其他，請說明：', '{purpose_other}其他，請說明：{purpose_other_detail}');
+
+  // 資料交付方式
+  xml = replaceText(xml, '□紙本', '{delivery_paper}紙本');
+  xml = replaceText(xml, '⬛️數位檔案', '{delivery_digital}數位檔案');
+
+  // 資料使用地點
+  xml = replaceText(xml, '⬛️本署署內辦公場域', '{loc_office}本署署內辦公場域');
+  xml = replaceText(xml, '⬛️個人公務電腦', '{loc_pc}個人公務電腦');
+  xml = replaceText(xml, '□其他分析平台：', '{loc_other}其他分析平台：');
+  xml = replaceText(xml, '□資科中心', '{loc_data_center}資科中心');
+
+  // 研究成果類型
+  xml = replaceText(xml, '□1.提供決策___件', '{outcome_policy}1.提供決策{outcome_policy_count}件');
+  xml = replaceText(xml, '□2.研究報告___件', '{outcome_report}2.研究報告{outcome_report_count}件');
+  xml = replaceText(xml, '⬛️3.論文寫作1件', '{outcome_paper_writing}3.論文寫作{outcome_paper_writing_count}件');
+  xml = replaceText(xml, '□4.論文發表___件', '{outcome_paper_publish}4.論文發表{outcome_paper_publish_count}件');
+  xml = replaceText(xml, '□5.其他___件', '{outcome_other}5.其他{outcome_other_count}件');
+
+  // 計畫主持人 checkbox
+  xml = replaceText(xml, '⬛️同申請人員', '{pi_same}同申請人員');
+
+  // 資料庫勾稽
+  xml = replaceText(xml, '⬛️否', '{cross_link_no}否');
+  xml = replaceText(xml, '□是，資科中心資料庫名稱：', '{cross_link_yes}是，資科中心資料庫名稱：{cross_link_db_name}');
+
+  saveDoc(zip, xml, 'DOC-6.docx');
+}
+
+// ========================================
+// DOC-1: IRB-004 研究計畫書
+// ========================================
+function processDOC1() {
+  console.log('\n📄 Processing DOC-1: IRB-004 研究計畫書');
+  let { zip, xml } = readDocXml(path.join(SRC, 'DOC-1.docx'));
+
+  // 基本資料 - 在 "中文：" / "英文：" 後插入 placeholder
+  xml = replaceAfterLabel(xml, '中文：', '{project_title_zh}');
+  xml = replaceAfterLabel(xml, '英文：', '{project_title_en}');
+
+  // 計畫主持人姓名（"姓名：" 出現在 "計畫主持人" 的下一個 cell）
+  // 第一個 "姓名：" = PI, 第二個 = co-PI
+  let nameCount = 0;
+  xml = xml.replace(/>姓名：</g, (match) => {
+    nameCount++;
+    if (nameCount === 1) return '>姓名：{pi_name_zh}<';
+    if (nameCount === 2) return '>姓名：{co_pi_names}<';
+    return match;
+  });
+
+  // 研究描述欄位 - 這些是表格 cell，標籤和值在不同 cell 中
+  // "計畫摘要" 的值在相鄰的空 cell 裡
+  // 使用方法：找到標籤所在的 </w:tc>，然後在下一個 <w:tc> 的 <w:t> 裡插入
+  xml = insertInNextCell(xml, '計畫摘要', '{abstract_zh}');
+
+  // "背景說明"（原始 XML 裡拆成 "計畫" + "背景說明"）
+  xml = insertInNextCell(xml, '背景說明', '{background}');
+
+  // 研究方法及程序區塊
+  xml = insertInNextCell(xml, '研究設計與進行方法', '{methodology}');
+  // "研究" + "限與預期進度"（被拆開了）
+  xml = insertInNextCell(xml, '限與預期進度', '{schedule_text}');
+  xml = insertInNextCell(xml, '研究人力及相關設備需求', '{personnel_equipment_text}');
+  xml = insertInNextCell(xml, '對研究對象可能之傷害及處理', '{harm_protection_text}');
+
+  // 其他區塊
+  xml = insertInNextCell(xml, '預期成果及主要效益', '{expected_outcome}');
+  // "研發成果之歸" + "屬及運用"（被拆開了）
+  xml = insertInNextCell(xml, '屬及運用', '{outcome_usage_text}');
+
+  saveDoc(zip, xml, 'DOC-1.docx');
+}
+
+// 在標籤所在 cell 的下一個相鄰 cell 中插入 placeholder
+function insertInNextCell(xml, labelText, placeholder) {
+  const escaped = labelText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  // 找到包含 labelText 的 </w:tc>，然後在後面的 <w:tc> 裡第一個空 <w:p> 中插入
+  const pattern = new RegExp(
+    `(${escaped}</w:t></w:r></w:p></w:tc>` +
+    `<w:tc><w:tcPr>[\\s\\S]*?</w:tcPr>` +
+    `<w:p[^>]*><w:pPr>[\\s\\S]*?</w:pPr>)` +
+    `(</w:p>)`
+  );
+  const result = xml.replace(pattern, `$1<w:r><w:t>${placeholder}</w:t></w:r>$2`);
+  if (result === xml) {
+    // 備用：直接在標籤文字後附加
+    return replaceText(xml, labelText, labelText + '\n' + placeholder);
+  }
+  return result;
+}
+
+// ========================================
+// DOC-2: IRB-012 免審申請表
+// ========================================
+function processDOC2() {
+  console.log('\n📄 Processing DOC-2: IRB-012 免審申請表');
+  let { zip, xml } = readDocXml(path.join(SRC, 'DOC-2.docx'));
+
+  // 計畫名稱中英文 - "中文" / "英文" 在表格 cell，值在相鄰空 cell
+  xml = insertInNextCell(xml, '中文', '{project_title_zh}');
+  xml = insertInNextCell(xml, '英文', '{project_title_en}');
+
+  // 計畫主持人
+  xml = insertInNextCell(xml, '中文姓名', '{pi_name_zh}');
+  xml = insertInNextCell(xml, '英文姓名', '{pi_name_en}');
+
+  // 協同主持人姓名
+  // "協同主持人" 下面的 "姓名" cell 旁邊的空 cell
+  xml = xml.replace(
+    /(協同主持人[\s\S]*?姓名<\/w:t><\/w:r><\/w:p><\/w:tc><w:tc><w:tcPr>[\s\S]*?<\/w:tcPr><w:p[^>]*>)([\s\S]*?)(<\/w:p>)/,
+    '$1<w:r><w:t>{co_pi_names}</w:t></w:r>$3'
+  );
+  if (!xml.includes('{co_pi_names}')) {
+    xml = replaceAfterLabel(xml, '>姓名<', '>{co_pi_label}{co_pi_names}<');
+    // 只替換協同主持人那個
+  }
+
+  // 聯絡人
+  xml = xml.replace(
+    /(聯絡人[\s\S]*?姓名<\/w:t><\/w:r><\/w:p><\/w:tc><w:tc><w:tcPr>[\s\S]*?<\/w:tcPr><w:p[^>]*>)([\s\S]*?)(<\/w:p>)/,
+    '$1<w:r><w:t>{contact_name_zh}</w:t></w:r>$3'
+  );
+
+  // 研究描述 - 研究計畫目的
+  xml = insertInNextCell(xml, '研究計畫目的', '{purpose}');
+
+  // 免審理由
+  xml = replaceText(xml,
+    '本研究為次級資料研究，資料皆已去識別化。',
+    '{exempt_reason}');
+
+  // 研究方法及工具（長預填文字）
+  xml = replaceText(xml,
+    '本研究使用疾管署防疫資料庫，依據「衛生福利部疾病管制署防疫資料庫員工研究計畫使用申請作業說明」提出申請，並檢附本IRB審查通過證明文件後，依序完成資料權責單位、資訊室及企劃組審核，經一層核定後取得去識別化資料。',
+    '{data_source}');
+
+  // 納入排除條件
+  xml = replaceAfterLabel(xml, '(1)納入條件：', '{inclusion_criteria}');
+  xml = replaceAfterLabel(xml, '(2)排除條件：', '{exclusion_criteria}');
+
+  saveDoc(zip, xml, 'DOC-2.docx');
+}
+
+// ========================================
+// DOC-3: IRB-018 保密切結書（研究人員）
+// ========================================
+function processDOC3() {
+  console.log('\n📄 Processing DOC-3: IRB-018 保密切結書(研究人員)');
+  let { zip, xml } = readDocXml(path.join(SRC, 'DOC-3.docx'));
+
+  // 本人_____名字（XML 裡是 "本人_________________"）
+  xml = replaceText(xml, '本人_________________', '本人{person_name_zh}');
+
+  // 角色 checkbox（都在同一個 <w:t> 裡："(□計畫主持人 □協同主持人 □研究人員 □其他"）
+  xml = replaceText(xml,
+    '(□計畫主持人 □協同主持人 □研究人員 □其他',
+    '({role_pi}計畫主持人 {role_co_pi}協同主持人 {role_researcher}研究人員 {role_other}其他');
+
+  // 研究計畫名稱（"因執行研究計畫：" 後面是空白 run，然後 "所需"）
+  // 在 "因執行研究計畫：" 的 </w:t> 後面的空 run 裡插入
+  xml = xml.replace(
+    /(因執行研究計畫：<\/w:t><\/w:r>[\s\S]*?<w:r[^>]*><w:rPr>[\s\S]*?<\/w:rPr><w:t[^>]*>)([\s\u3000]*)(<\/w:t>[\s\S]*?所需)/,
+    '$1{project_title_zh}$3'
+  );
+  // 備用：如果上面沒 match，直接追加
+  if (!xml.includes('{project_title_zh}')) {
+    xml = replaceAfterLabel(xml, '因執行研究計畫：', '{project_title_zh}');
+  }
+
+  // 立同意書人簽名（"立同意書人簽名：" 後面是空白）
+  xml = replaceAfterLabel(xml, '立同意書人簽名：', '{person_name_zh}');
+
+  // 日期（拆成多個 run："日期：" + 空格 + "年" + 空格 + "月" + 空格 + "日"）
+  // 替換 "日期：" 後面所有 run 直到 "</w:p>"，重新組合
+  xml = xml.replace(
+    /(日期：<\/w:t><\/w:r>)([\s\S]*?)(年<\/w:t>[\s\S]*?月<\/w:t>[\s\S]*?日<\/w:t><\/w:r>)/,
+    '$1<w:r><w:rPr><w:rFonts w:ascii="DFKai-SB" w:eastAsia="DFKai-SB" w:hAnsi="DFKai-SB"/><w:sz w:val="28"/><w:szCs w:val="28"/></w:rPr><w:t>{signing_date_roc}</w:t></w:r><w:r><w:rPr><w:rFonts w:ascii="DFKai-SB" w:eastAsia="DFKai-SB" w:hAnsi="DFKai-SB"/><w:sz w:val="28"/><w:szCs w:val="28"/></w:rPr><w:t>日</w:t></w:r>'
+  );
+  // 如果以上 regex 沒 match，用簡單備用方案
+  if (!xml.includes('{signing_date_roc}')) {
+    xml = replaceText(xml, '日期：', '日期：{signing_date_roc}');
+  }
+
+  saveDoc(zip, xml, 'DOC-3.docx');
+}
+
+// ===== 執行 =====
+console.log('🏗️  Injecting placeholders into original templates...\n');
+processDOC1();
+processDOC2();
+processDOC3();
+processDOC4();
+processDOC5();
+processDOC6();
+console.log('\n✅ Done! All 6 templates saved to public/templates/');

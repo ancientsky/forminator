@@ -41,6 +41,8 @@ function findByRole(personnel: Personnel[], role: string): Personnel | undefined
 function prepareCommonData(data: FormData) {
   const pi = findByRole(data.personnel, 'pi') || data.personnel[0];
   const contact = findByRole(data.personnel, 'contact') || pi;
+  const coPis = data.personnel.filter(p => p.role === 'co_pi');
+  const researchers = data.personnel.filter(p => p.role === 'researcher');
 
   return {
     // 基本
@@ -188,6 +190,72 @@ function prepareCommonData(data: FormData) {
       phone: p.phone,
     })),
 
+    // DOC-4 封面：個別人名欄位
+    co_pi_name_1: coPis[0]?.name_zh || '',
+    co_pi_name_2: coPis[1]?.name_zh || '',
+    co_pi_name_3: coPis[2]?.name_zh || '',
+    researcher_name_1: researchers[0]?.name_zh || '',
+    researcher_name_2: researchers[1]?.name_zh || '',
+    researcher_name_3: researchers[2]?.name_zh || '',
+    researcher_name_4: researchers[3]?.name_zh || '',
+
+    // DOC-4 checkbox（■ = 勾選, □ = 未勾選）
+    project_type_new: data.project_type === 'new_1yr' || data.project_type === 'new_multi' ? '■' : '□',
+    project_type_1yr: data.project_type === 'new_1yr' ? '■' : '□',
+    project_type_multi: data.project_type === 'new_multi' ? '■' : '□',
+    project_type_old: data.project_type === 'continuing_multi' ? '■' : '□',
+    exp_human: data.experiment_types.includes('human_research') ? '■' : '□',
+    exp_gene: data.experiment_types.includes('gene_recombination') ? '■' : '□',
+    needs_funding_yes: data.needs_funding ? '■' : '□',
+    needs_funding_no: data.needs_funding ? '□' : '■',
+
+    // DOC-3 角色 checkbox
+    role_pi: '□',
+    role_co_pi: '□',
+    role_researcher: '□',
+    role_other: '□',
+
+    // DOC-5/DOC-3 簽署日期
+    signing_date_roc: toRocDate(data.filing_date),
+
+    // DOC-6 checkbox
+    purpose_internal: data.research_purpose_type === 'internal_research' ? '■' : '□',
+    purpose_thesis: data.research_purpose_type === 'thesis' ? '■' : '□',
+    purpose_no_fund: data.research_purpose_type === 'no_fund_research' ? '■' : '□',
+    purpose_other: data.research_purpose_type === 'other' ? '■' : '□',
+    purpose_other_detail: '',
+    delivery_paper: data.delivery_format === 'paper' ? '■' : '□',
+    delivery_digital: data.delivery_format === 'digital' ? '■' : '□',
+    loc_office: data.analysis_location.includes('office') ? '■' : '□',
+    loc_pc: data.analysis_location.includes('personal_pc') ? '■' : '□',
+    loc_other: data.analysis_location.includes('other_platform') ? '■' : '□',
+    loc_data_center: data.analysis_location.includes('data_center') ? '■' : '□',
+    pi_same: data.pi_same_as_applicant ? '■' : '□',
+    cross_link_no: data.cross_link_data_center ? '□' : '■',
+    cross_link_yes: data.cross_link_data_center ? '■' : '□',
+    cross_link_db_name: '',
+
+    // DOC-6 成果類型 checkbox 和計數
+    ...(() => {
+      const types = data.outcome_type_detail;
+      const find = (t: string) => types.find(o => o.type === t);
+      return {
+        outcome_policy: find('policy') ? '■' : '□',
+        outcome_policy_count: find('policy')?.count?.toString() || '___',
+        outcome_report: find('report') ? '■' : '□',
+        outcome_report_count: find('report')?.count?.toString() || '___',
+        outcome_paper_writing: find('paper_writing') ? '■' : '□',
+        outcome_paper_writing_count: find('paper_writing')?.count?.toString() || '___',
+        outcome_paper_publish: find('paper_publish') ? '■' : '□',
+        outcome_paper_publish_count: find('paper_publish')?.count?.toString() || '___',
+        outcome_other: find('other') ? '■' : '□',
+        outcome_other_count: find('other')?.count?.toString() || '___',
+      };
+    })(),
+
+    // DOC-6 申請日期
+    apply_date_roc: toRocDate(data.filing_date),
+
     // 封面用
     co_pi_lines: data.personnel
       .filter(p => p.role === 'co_pi')
@@ -239,6 +307,11 @@ async function generatePerPersonDoc(
       person_phone: person.phone,
       person_email: person.email,
       person_id_number: person.id_number,
+      // DOC-3 角色 checkbox
+      role_pi: person.role === 'pi' ? '■' : '□',
+      role_co_pi: person.role === 'co_pi' ? '■' : '□',
+      role_researcher: person.role === 'researcher' ? '■' : '□',
+      role_other: (person.role !== 'pi' && person.role !== 'co_pi' && person.role !== 'researcher') ? '■' : '□',
     };
 
     const blob = await generateDoc(docId, personData);
