@@ -77,25 +77,16 @@ async function genDOC7() {
         page: { size: A4, margin: { top: 1440, right: 1440, bottom: 1440, left: 1440 } },
       },
       children: [
-        p([t('簽', { bold: true, size: 36 })], { alignment: AlignmentType.CENTER, spacing: { after: 200 } }),
-        p([t('主旨：', { bold: true }), t('擬辦理「{project_title_zh}」研究計畫，簽請核示。')], { spacing: { after: 200 } }),
+        // 標題
+        p([t('簽', { bold: true, size: 36 })], { alignment: AlignmentType.CENTER, spacing: { after: 300 } }),
+        // 主旨
+        p([t('主旨：', { bold: true }), t('{responsible_unit}擬執行{project_year}年度無經費需求署內自行研究計畫一件，簽請鑒核。')], { spacing: { after: 300 } }),
+        // 說明
         p([t('說明：', { bold: true })], { spacing: { after: 100 } }),
-        p([t('一、為瞭解{purpose_brief}，擬利用本署防疫資料庫進行回溯性研究分析。')], { indent: { left: 480 }, spacing: { after: 100 } }),
-        p([t('二、本案研究期程自{execution_start_roc}至{execution_end_roc}，由{responsible_unit}{pi_name_zh}主持，不需額外經費。')], { indent: { left: 480 }, spacing: { after: 100 } }),
-        p([t('三、依「衛生福利部疾病管制署研究計畫管理要點」規定，本研究計畫書（如附件一）業經單位主管初審，爰提送研究審查會進行審查。')], { indent: { left: 480 }, spacing: { after: 100 } }),
-        p([t('四、本案擬同時向本署 IRB 申請倫理審查（免審），相關文件如附件二至四。')], { indent: { left: 480 }, spacing: { after: 200 } }),
+        p([t('本研究計畫名稱為「{project_title_zh}」，研究計畫書內容詳如附件。')], { indent: { left: 480 }, spacing: { after: 300 } }),
+        // 擬辦
         p([t('擬辦：', { bold: true })], { spacing: { after: 100 } }),
-        p([t('一、簽請同意辦理上揭研究計畫。')], { indent: { left: 480 }, spacing: { after: 100 } }),
-        p([t('二、核可後將續依規定向 IRB 申請倫理審查及向資料庫申請使用資料。')], { indent: { left: 480 }, spacing: { after: 400 } }),
-        p([t('附件：')], { spacing: { after: 100 } }),
-        p([t('一、署內研究計畫書')], { indent: { left: 480 }, spacing: { after: 60 } }),
-        p([t('二、IRB-004 研究計畫書')], { indent: { left: 480 }, spacing: { after: 60 } }),
-        p([t('三、IRB-012 免審申請表')], { indent: { left: 480 }, spacing: { after: 60 } }),
-        p([t('四、IRB-018 保密切結書')], { indent: { left: 480 }, spacing: { after: 400 } }),
-        // 簽名區
-        p([t('{responsible_unit}')], { alignment: AlignmentType.RIGHT, spacing: { after: 200 } }),
-        p([t('{pi_name_zh}')], { alignment: AlignmentType.RIGHT, spacing: { after: 100 } }),
-        p([t('中華民國{filing_date_roc}')], { alignment: AlignmentType.RIGHT }),
+        p([t('奉核後據以辦理相關後續事宜。')], { indent: { left: 480 } }),
       ],
     }],
   });
