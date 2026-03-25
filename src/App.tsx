@@ -1,12 +1,13 @@
-// ===== 表單終結者 Forminator — 主應用 =====
+// ===== 研究計畫表單終結者 Forminator — 主應用 =====
 
 import { useState, useRef, useEffect } from 'react';
-import { ConfigProvider, Layout, Steps, Button, Space, message, Modal, Upload, Checkbox, Typography, Divider, App as AntApp } from 'antd';
+import { ConfigProvider, Layout, Steps, Button, Space, message, Modal, Upload, Checkbox, Typography, Divider, Alert, App as AntApp } from 'antd';
 import { ExportOutlined, ImportOutlined, DownloadOutlined, ArrowLeftOutlined, ArrowRightOutlined, FileTextOutlined } from '@ant-design/icons';
 import zhTW from 'antd/locale/zh_TW';
 
 import { FormContext, useCreateFormStore } from './hooks/useFormStore';
 import DataLossWarning from './components/common/DataLossWarning';
+import FeedbackButton from './components/common/FeedbackButton';
 import Step1BasicInfo from './components/wizard/Step1BasicInfo';
 import Step2Personnel from './components/wizard/Step2Personnel';
 import Step3Research from './components/wizard/Step3Research';
@@ -142,7 +143,7 @@ function AppContent() {
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <span style={{ fontSize: 24 }}>🤖</span>
-            <Title level={4} style={{ margin: 0 }}>表單終結者</Title>
+            <Title level={4} style={{ margin: 0 }}>研究計畫表單終結者</Title>
             <Text type="secondary" style={{ fontSize: 12 }}>Forminator v{SDD_VERSION}</Text>
           </div>
           <Space>
@@ -161,6 +162,13 @@ function AppContent() {
 
         <Content style={{ padding: '24px', maxWidth: 960, margin: '0 auto', width: '100%' }} ref={contentRef}>
           <DataLossWarning onExport={handleExport} hasData={hasData} />
+          <Alert
+            message="目前僅支援「署內無經費研究」之免審申請表單生成"
+            type="info"
+            showIcon
+            closable
+            style={{ marginBottom: 16 }}
+          />
 
           {!showResult ? (
             <>
@@ -245,8 +253,9 @@ function AppContent() {
         </Content>
 
         <Footer style={{ textAlign: 'center', color: '#999', fontSize: 12 }}>
-          表單終結者 Forminator — 「I'll be back... with all 7 forms.」
+          研究計畫表單終結者 Forminator — 「I'll be back... with all 7 forms.」
         </Footer>
+        <FeedbackButton />
       </Layout>
     </FormContext.Provider>
   );

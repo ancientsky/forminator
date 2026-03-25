@@ -37,7 +37,7 @@ export default function DataLossWarning({ onExport, hasData }: Props) {
     <>
       {!dismissed && (
         <Alert
-          message="本系統不會儲存您的填寫資料"
+          message="本工具不會儲存您的填寫資料"
           description="關閉瀏覽器後資料將遺失。請記得匯出 JSON 檔保存進度。"
           type="warning"
           showIcon

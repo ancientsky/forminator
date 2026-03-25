@@ -2,7 +2,7 @@
 
 import type { FormData, Personnel, WorkflowStep } from '../types/form';
 
-export const SDD_VERSION = '0.7';
+export const SDD_VERSION = '1.0.0';
 
 /** 空白人員模板 */
 export const emptyPersonnel: Personnel = {
@@ -120,5 +120,5 @@ export const DOC_NAMES: Record<string, string> = {
   'DOC-4': '署內研究計畫書',
   'DOC-5': '資料庫保密切結書（署內員工使用）',
   'DOC-6': '資料庫使用申請單',
-  'DOC-7': '研究計畫簽呈（公文）',
+  'DOC-7': '研究計畫簽呈（含公文系統操作說明）',
 };
