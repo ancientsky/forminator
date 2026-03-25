@@ -736,19 +736,85 @@ Forminator 的核心設計哲學是：**一次填寫，生成多份文件**。
 | 「模板寫死在程式裡」 | 「模板是獨立的 .docx 檔案，injection 腳本可以重跑」 |
 | 「生成完直接下載」 | 「打包成 ZIP，檔名帶計畫名稱，方便歸檔」 |
 
-### 架構決策紀錄
+### 兩個腳本的分工
 
-**為什麼從「程式生成模板」改成「原始模板 + placeholder 注入」？**
+本專案有兩個模板處理腳本，各自負責不同的文件：
 
-初版用 `docx-js` 從零生成 Word 文件，但遇到：
-1. 表格格式（合併儲存格、框線樣式）難以精確重現
-2. 字型、間距等微調需要大量嘗試
-3. 每次官方模板更新，要重寫大量程式碼
+```
+scripts/
+├── inject-placeholders.cjs   ← DOC-1~6（從原始 CDC 模板注入 placeholder）
+└── generate-templates.cjs    ← DOC-7（用程式碼從零生成）
+```
 
-改用原始模板後：
-- 格式 100% 忠於官方
-- 只需維護 placeholder 注入邏輯
-- 更新模板只需重跑 `node scripts/inject-placeholders.cjs`
+#### `inject-placeholders.cjs` — 原始模板注入（DOC-1~6）
+
+**做法：** 讀取 CDC/IRB 的原始 Word 模板（`.docx`），解壓後直接操作 `word/document.xml` 的 XML 字串，把 `○○○` 或空白 cell 替換成 `{placeholder}` 標籤，再重新打包成 `.docx`。
+
+```
+原始 CDC 模板 (.docx)
+    ↓ 解壓 ZIP
+word/document.xml (XML 字串)
+    ↓ regex 替換 / XML 操作
+    ↓ 插入 {placeholder}、{#loop}...{/loop}、PAGEREF 等
+修改後的 XML
+    ↓ 重新打包 ZIP
+public/templates/DOC-1~6.docx
+```
+
+**為什麼用這種方式？**
+- 保留原始模板的**所有格式**（表格合併、框線、字型、間距）
+- 不需要用程式重建複雜的 Word 排版
+- 官方模板更新時，只需替換原始檔重跑腳本
+
+**執行方式：**
+```bash
+# 1. 把原始模板放到 /tmp/forminator-templates/
+# 2. 跑注入腳本
+node scripts/inject-placeholders.cjs
+# → 輸出到 public/templates/DOC-1~6.docx
+```
+
+**注意：** 這個腳本依賴原始模板的 XML 結構。如果 CDC 更新了模板格式（例如改了表格欄位順序），腳本裡的 regex 和 anchor 文字可能需要跟著調整。
+
+#### `generate-templates.cjs` — 程式生成（DOC-7）
+
+**做法：** 用 [docx-js](https://github.com/dolanmiu/docx) 函式庫，純粹用 JavaScript 程式碼建立 `.docx` 檔案。
+
+```js
+// 用程式碼描述 Word 文件的結構
+const doc = new Document({
+  sections: [{
+    children: [
+      new Paragraph({ children: [new TextRun('主旨：')] }),
+      // ...
+    ],
+  }],
+});
+```
+
+**為什麼 DOC-7 用程式生成而不是模板注入？**
+- DOC-7（公文簽呈）結構很簡單——只有主旨、說明、擬辦三段文字
+- 沒有複雜的表格合併或特殊格式
+- 不需要原始模板，程式碼即文件
+
+**執行方式：**
+```bash
+node scripts/generate-templates.cjs
+# → 輸出到 public/templates/DOC-7.docx
+```
+
+#### 為什麼要分兩套？踩過的坑
+
+早期**所有 DOC-1~7 都用 `generate-templates.cjs` 程式生成**。但 DOC-1~6 是 CDC/IRB 的官方表格，有大量的：
+1. 表格合併儲存格、複雜框線樣式
+2. 特殊字型與間距微調
+3. 頁首頁尾、浮水印
+
+用程式重建這些格式需要大量嘗試，而且容易走樣。後來改用「原始模板 + 注入」的方式，格式問題一次解決。
+
+**但舊的 genDOC1~6 函式沒有刪掉！** 導致跑 `generate-templates.cjs` 時會把 inject 版的 DOC-1~6 覆蓋成簡陋的程式生成版。這是一個很容易踩的坑——兩個腳本輸出到同一個資料夾，後跑的會覆蓋先跑的。
+
+**教訓：當兩個工具產出同路徑的檔案，留下來的舊程式碼就是一顆地雷。確認職責分離後，要把不再使用的程式碼刪乾淨。**
 
 **為什麼甘特圖用 ■ 而不是底色填充？**
 
